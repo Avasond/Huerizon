@@ -1,0 +1,100 @@
+blueprint:
+  name: Huerizon - Apply Sky Colors
+  description: Automatically apply current sky hue, saturation, and brightness to selected lights. Supports JSON or separate H/S/B sensors.
+  domain: automation
+  input:
+    target_lights:
+      name: Target Lights
+      selector:
+        target:
+          entity:
+            domain: light
+    source_mode:
+      name: Source Mode
+      description: Choose how to read sky color data
+      selector:
+        select:
+          options:
+            - label: "JSON State (hue, saturation, brightness)"
+              value: json
+            - label: "Separate H/S/B Sensors"
+              value: triplet
+    json_sensor:
+      name: JSON State Sensor
+      description: Used only if Source Mode = JSON
+      selector:
+        entity:
+          domain: sensor
+          multiple: false
+          optional: true
+    hue_sensor:
+      name: Hue Sensor
+      description: Used only if Source Mode = Triplet
+      selector:
+        entity:
+          domain: sensor
+          multiple: false
+          optional: true
+    saturation_sensor:
+      name: Saturation Sensor
+      description: Used only if Source Mode = Triplet
+      selector:
+        entity:
+          domain: sensor
+          multiple: false
+          optional: true
+    brightness_sensor:
+      name: Brightness Sensor
+      description: Used only if Source Mode = Triplet
+      selector:
+        entity:
+          domain: sensor
+          multiple: false
+          optional: true
+
+trigger:
+  - platform: state
+    entity_id: !input json_sensor
+    enabled: "{{ is_state(source_mode, 'json') }}"
+  - platform: state
+    entity_id: !input hue_sensor
+    enabled: "{{ is_state(source_mode, 'triplet') }}"
+  - platform: state
+    entity_id: !input saturation_sensor
+    enabled: "{{ is_state(source_mode, 'triplet') }}"
+  - platform: state
+    entity_id: !input brightness_sensor
+    enabled: "{{ is_state(source_mode, 'triplet') }}"
+
+variables:
+  source_mode: !input source_mode
+  json_sensor: !input json_sensor
+  hue_sensor: !input hue_sensor
+  saturation_sensor: !input saturation_sensor
+  brightness_sensor: !input brightness_sensor
+  hue: >-
+    {% if source_mode == 'json' %}
+      {{ state_attr(json_sensor, 'hue') or (states(json_sensor) | from_json).hue }}
+    {% else %}
+      {{ states(hue_sensor) | float(0) }}
+    {% endif %}
+  saturation: >-
+    {% if source_mode == 'json' %}
+      {{ state_attr(json_sensor, 'saturation') or (states(json_sensor) | from_json).saturation }}
+    {% else %}
+      {{ states(saturation_sensor) | float(0) }}
+    {% endif %}
+  brightness: >-
+    {% if source_mode == 'json' %}
+      {{ state_attr(json_sensor, 'brightness') or (states(json_sensor) | from_json).brightness }}
+    {% else %}
+      {{ states(brightness_sensor) | float(0) }}
+    {% endif %}
+
+action:
+  - service: huerizon.apply_sky
+    data:
+      hue: "{{ hue }}"
+      saturation: "{{ saturation }}"
+      brightness_pct: "{{ brightness }}"
+    target: !input target_lights

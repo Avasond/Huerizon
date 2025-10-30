@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up MQTT sky sync for your Huerizon device",
+        "description": "Click Submit to add Huerizon, then open Configure to pick camera and lights."
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Huerizon Options",
+        "description": "Choose how to read sky color data and which lights to sync.",
+        "data": {
+          "source_mode": "HSB Source Mode",
+          "json_sensor": "JSON state sensor",
+          "state_h_entity": "Hue entity",
+          "state_s_entity": "Saturation entity",
+          "state_b_entity": "Brightness entity",
+          "hue_scale": "Hue scale",
+          "percent_scale": "Saturation/Brightness scale",
+          "source_camera": "Source camera",
+          "target_lights": "Target lights"
+        },
+        "data_description": {
+          "source_mode": "Choose whether Huerizon reads a single JSON state or three separate entities.",
+          "json_sensor": "Select the sensor that publishes a JSON payload with hue, saturation, and brightness.",
+          "state_h_entity": "Entity that provides hue.",
+          "state_s_entity": "Entity that provides saturation.",
+          "state_b_entity": "Entity that provides brightness.",
+          "hue_scale": "If not set to Auto, tell Huerizon how hue is scaled.",
+          "percent_scale": "If not set to Auto, tell Huerizon how saturation and brightness are scaled.",
+          "source_camera": "Optional camera used for previews.",
+          "target_lights": "Lights that will be synchronized to the sky color."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,38 @@
+apply_sky:
+  name: Apply Sky to Lights
+  description: Set selected lights to the current sky hue, saturation, and brightness.
+  fields:
+    target:
+      name: Target
+      description: Lights or areas to update.
+      selector:
+        target:
+          entity:
+            domain: light
+    hue:
+      name: Hue
+      description: Hue value (0–360)
+      example: 210
+      selector:
+        number:
+          min: 0
+          max: 360
+          step: 1
+    saturation:
+      name: Saturation
+      description: Saturation (0–100)
+      example: 45
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+    brightness_pct:
+      name: Brightness
+      description: Brightness percent (0–100)
+      example: 70
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1

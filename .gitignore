@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+.coverage
+.pytest_cache/
+.mypy_cache/
+.eggs/
+dist/
+build/
