@@ -82,7 +82,7 @@ class HuerizonCamera(Camera):
             return
 
         self._unsub = await mqtt.async_subscribe(
-            self.hass, self._topic, _message_received, qos=0
+            self.hass, self._topic, _message_received, qos=0, encoding=None
         )
 
     async def async_will_remove_from_hass(self) -> None:
