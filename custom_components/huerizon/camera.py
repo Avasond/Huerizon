@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Optional, Callable
+from collections.abc import Callable
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from homeassistant.components import mqtt
 from homeassistant.components.camera import Camera
@@ -15,14 +17,17 @@ from .const import (
     CAMERA_FILTERED_NAME,
 )
 
-# Map of MQTT topics to human-friendly entity names
 IMAGES = {
     TOPIC_IMAGE_ORIGINAL: CAMERA_ORIGINAL_NAME,
     TOPIC_IMAGE_FILTERED: CAMERA_FILTERED_NAME,
 }
 
 
-async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up Huerizon MQTT-backed camera entities from a config entry."""
     entities: list[HuerizonCamera] = [
         HuerizonCamera(
@@ -54,11 +59,9 @@ class HuerizonCamera(Camera):
         self.hass = hass
         self._topic = topic
         self._attr_name = name
-        self._image: Optional[bytes] = None
-        self._unsub: Optional[Callable[[], None]] = None
-        # Stable unique_id so the entity is manageable from the UI
+        self._image: bytes | None = None
+        self._unsub: Callable[[], None] | None = None
         self._attr_unique_id = f"{entry_id}_camera_{topic.replace('/', '_')}"
-        # Group both camera entities under the same device
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry_id)},
             name=device_name,
@@ -71,12 +74,13 @@ class HuerizonCamera(Camera):
 
         @callback
         def _message_received(msg: mqtt.ReceiveMessage) -> None:
-            # Expect raw JPEG bytes on the configured topic
             if msg.topic == self._topic and msg.payload:
                 self._image = msg.payload
                 self.async_write_ha_state()
 
-        # Subscribe and keep the unsubscribe handle for cleanup
+        if "mqtt" not in self.hass.data:
+            return
+
         self._unsub = await mqtt.async_subscribe(
             self.hass, self._topic, _message_received, qos=0
         )

@@ -1,7 +1,7 @@
 {
   "domain": "huerizon",
   "name": "Huerizon Sky Sync",
-  "after_dependencies": ["camera", "light", "sensor"],
+  "after_dependencies": ["camera", "light"],
   "codeowners": ["@Avasond"],
   "config_flow": true,
   "dependencies": ["mqtt", "light"],

@@ -5,7 +5,7 @@ setup:
 	python -m pip install -r requirements-dev.txt
 
 test:
-	pytest -q -vv
+	pytest --tb=short -q
 
 lint: format
 	ruff check .

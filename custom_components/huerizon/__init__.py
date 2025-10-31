@@ -1,98 +1,208 @@
 import logging
-from typing import Any, Dict, Set
+from typing import Any
+from collections.abc import Mapping
 
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import service as ha_service
 from homeassistant.config_entries import ConfigEntry
 
-from .const import (
-    DOMAIN,
-    # Optional: if defined in const.py, we use it to seed defaults on first setup.
-    # Otherwise this local fallback keeps behavior non-breaking.
-    DEFAULT_OPTIONS as _DEFAULTS,  # type: ignore[attr-defined]
-)
-
+from .const import DOMAIN, DEFAULT_OPTIONS as _DEFAULTS
 
 _LOGGER = logging.getLogger(__name__)
 
-# If const.DEFAULT_OPTIONS isn't present, provide safe local defaults AND
-# ensure new keys exist even when const.DEFAULT_OPTIONS is from an older build.
-_DEFAULTS_FALLBACK: Dict[str, Any] = {
-    # Source selection & entity wiring
-    "source_mode": "json_topic",  # or: "entity_triplet"
-    "json_sensor": "",  # entity_id of the combined JSON sensor
-    "state_h_entity": "",  # entity_id for hue
-    "state_s_entity": "",  # entity_id for saturation
-    "state_b_entity": "",  # entity_id for brightness
-    # Scaling
-    "hue_scale": "auto",  # auto | 0-360 | 0-1 | 0-255
-    "percent_scale": "auto",  # auto | 0-100 | 0-1 | 0-255
-    # Scheduling / rate limiting (new)
-    "only_at_night": False,  # run only when sun is down
-    "active_start_time": "00:00:00",  # HH:MM:SS
-    "active_end_time": "23:59:59",  # HH:MM:SS
-    "active_days": [  # Mon-Sun selection
-        "mon",
-        "tue",
-        "wed",
-        "thu",
-        "fri",
-        "sat",
-        "sun",
-    ],
-    "min_color_delta": 5.0,  # minimum delta before applying new color
-    "rate_limit_sec": 2.0,  # throttle rapid updates
+_DEFAULTS_FALLBACK: dict[str, Any] = {
+    "input_format": "xy",
+    "x_entity": "",
+    "y_entity": "",
+    "r_entity": "",
+    "g_entity": "",
+    "b_entity": "",
+    "mireds_entity": "",
+    "kelvin_entity": "",
+    "brightness_entity": "",
+    "state_h_entity": "",
+    "state_s_entity": "",
+    "state_b_entity": "",
+
+    "normalize": {
+        "strip_symbols": True,
+        "coerce_numbers": True,
+        "clamp": True,
+        "brightness_is_percent": False,
+    },
+
+    "apply_mode": "prefer_xy",
+
+    "only_at_night": False,
+    "active_start": None,
+    "active_end": None,
+    "active_days": [],
+    "min_delta": 0.0,
+    "rate_limit_sec": 0.0,
 }
 
-# Build DEFAULT_OPTIONS so that const.DEFAULT_OPTIONS may override values, while
-# still guaranteeing presence of any new keys added in this version.
 try:
-    DEFAULT_OPTIONS: Dict[str, Any] = {**_DEFAULTS_FALLBACK, **dict(_DEFAULTS)}  # type: ignore[name-defined]
-except Exception:  # pragma: no cover - fallback path
+    DEFAULT_OPTIONS: dict[str, Any] = {**_DEFAULTS_FALLBACK, **dict(_DEFAULTS)}
+except Exception:
     DEFAULT_OPTIONS = dict(_DEFAULTS_FALLBACK)
 
-PLATFORMS = [
-    Platform.SENSOR
-]  # Add Platform.CAMERA if you keep a native camera platform
+PLATFORMS: tuple[Platform, ...] = (Platform.CAMERA,)
 
-SERVICE_APPLY_SKY = "apply_sky"
+SERVICE_APPLY_SKY: str = "apply_sky"
+
+
+def _coerce_bool(value: Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in {"true", "1", "yes", "on"}:
+            return True
+        if v in {"false", "0", "no", "off"}:
+            return False
+    return default
+
+
+def _merge_and_normalize_options(options: Mapping[str, Any]) -> dict[str, Any]:
+    merged: dict[str, Any] = {**DEFAULT_OPTIONS, **dict(options or {})}
+
+    for k in ("min_delta", "rate_limit_sec"):
+        try:
+            merged[k] = float(merged.get(k))
+        except Exception:
+            merged[k] = DEFAULT_OPTIONS[k]
+
+    merged["only_at_night"] = _coerce_bool(
+        merged.get("only_at_night"), DEFAULT_OPTIONS["only_at_night"]
+    )
+
+    norm_src = dict(merged.get("normalize", {}))
+    norm = {
+        "strip_symbols": _coerce_bool(norm_src.get("strip_symbols"), True),
+        "coerce_numbers": _coerce_bool(norm_src.get("coerce_numbers"), True),
+        "clamp": _coerce_bool(norm_src.get("clamp"), True),
+        "brightness_is_percent": _coerce_bool(
+            norm_src.get("brightness_is_percent"), False
+        ),
+    }
+    merged["normalize"] = dict(norm)
+    merged["_runtime_normalize"] = dict(norm)
+
+    def _none_if_empty(val: Any) -> Any:
+        if val is None:
+            return None
+        if isinstance(val, str) and val.strip() == "":
+            return None
+        return val
+
+    merged["_runtime"] = {
+        "input_format": (merged.get("input_format") or "xy").lower(),
+        "entities": {
+            "x": merged.get("x_entity", ""),
+            "y": merged.get("y_entity", ""),
+            "h": (merged.get("h_entity") or merged.get("state_h_entity", "")),
+            "s": (merged.get("s_entity") or merged.get("state_s_entity", "")),
+            "r": merged.get("r_entity", ""),
+            "g": merged.get("g_entity", ""),
+            "b": merged.get("b_entity", ""),
+            "mireds": merged.get("mireds_entity", ""),
+            "kelvin": merged.get("kelvin_entity", ""),
+            "brightness": (merged.get("brightness_entity") or merged.get("state_b_entity", "")),
+        },
+        "apply_mode": (merged.get("apply_mode") or "prefer_xy").lower(),
+        "schedule": {
+            "only_at_night": bool(merged.get("only_at_night", False)),
+            "active_start": _none_if_empty(merged.get("active_start", None)),
+            "active_end": _none_if_empty(merged.get("active_end", None)),
+            "active_days": list(merged.get("active_days", [])),
+            "min_delta": float(merged.get("min_delta", DEFAULT_OPTIONS.get("min_delta", 0.0))),
+            "rate_limit_sec": float(merged.get("rate_limit_sec", DEFAULT_OPTIONS.get("rate_limit_sec", 0.0))),
+        },
+    }
+
+    return merged
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle options update."""
+    merged = _merge_and_normalize_options(dict(entry.options))
+
     data = hass.data.setdefault(DOMAIN, {})
     entry_bucket = data.setdefault(entry.entry_id, {})
-    entry_bucket["options"] = dict(entry.options)
-    _LOGGER.debug("Huerizon options updated: %s", entry.options)
+    entry_bucket["options"] = merged
+    entry_bucket["runtime"] = merged.get("_runtime", {})
+    entry_bucket["normalize"] = merged.get("_runtime_normalize", {})
 
-    # Reload the entry so platform(s) pick up new options.
+    _LOGGER.debug("Huerizon options updated: %s", merged)
+
     hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
 
 
 async def _async_register_services(hass: HomeAssistant) -> None:
-    """Register Huerizon services (idempotent)."""
     if hass.services.has_service(DOMAIN, SERVICE_APPLY_SKY):
         return
 
     async def _handle_apply_sky(call: ServiceCall) -> None:
-        """Apply sky hue/saturation/brightness to target lights."""
+        xy = call.data.get("xy_color")
+        hs = call.data.get("hs_color")
+        rgb = call.data.get("rgb_color")
+        bri = call.data.get("brightness")
+        source = call.data.get("source")
+
         hue = call.data.get("hue")
         sat = call.data.get("saturation")
-        bri = call.data.get("brightness_pct")
+        bri_pct = call.data.get("brightness_pct")
 
-        # Extract targets from 'target' selector (areas/devices/entities)
-        entity_ids: Set[str] = await ha_service.async_extract_entity_ids(hass, call)
+        entity_ids: set[str] = await ha_service.async_extract_entity_ids(hass, call)
         if not entity_ids:
             _LOGGER.warning("huerizon.apply_sky called without target lights")
             return
 
-        # Build light.turn_on payload. Home Assistant expects (h, s) where s is 0-100.
-        service_data: Dict[str, Any] = {"entity_id": list(entity_ids)}
-        if hue is not None and sat is not None:
-            service_data["hs_color"] = [float(hue), float(sat)]
+        service_data: dict[str, Any] = {"entity_id": list(entity_ids)}
+
+        if isinstance(xy, (list, tuple)) and len(xy) == 2:
+            try:
+                service_data["xy_color"] = [float(xy[0]), float(xy[1])]
+            except Exception:
+                _LOGGER.debug("Invalid xy_color payload: %s", xy)
+        elif isinstance(hs, (list, tuple)) and len(hs) == 2:
+            try:
+                service_data["hs_color"] = [float(hs[0]), float(hs[1])]
+            except Exception:
+                _LOGGER.debug("Invalid hs_color payload: %s", hs)
+        elif isinstance(rgb, (list, tuple)) and len(rgb) == 3:
+            try:
+                service_data["rgb_color"] = [int(rgb[0]), int(rgb[1]), int(rgb[2])]
+            except Exception:
+                _LOGGER.debug("Invalid rgb_color payload: %s", rgb)
+        elif hue is not None and sat is not None:
+            try:
+                service_data["hs_color"] = [float(hue), float(sat)]
+            except Exception:
+                _LOGGER.debug("Invalid legacy hue/saturation payload: %s, %s", hue, sat)
+
         if bri is not None:
-            service_data["brightness_pct"] = float(bri)
+            try:
+                bri_val = int(float(bri))
+                if bri_val < 0:
+                    bri_val = 0
+                if bri_val > 255:
+                    bri_val = 255
+                service_data["brightness"] = bri_val
+            except Exception:
+                _LOGGER.debug("Invalid brightness payload: %s", bri)
+        elif bri_pct is not None:
+            try:
+                service_data["brightness_pct"] = float(bri_pct)
+            except Exception:
+                _LOGGER.debug("Invalid brightness_pct payload: %s", bri_pct)
+
+        if source:
+            _LOGGER.debug(
+                "apply_sky called from source=%s payload=%s",
+                source,
+                {k: v for k, v in service_data.items() if k != "entity_id"},
+            )
 
         await hass.services.async_call("light", "turn_on", service_data, blocking=False)
 
@@ -100,38 +210,32 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Huerizon from a config entry created via the UI."""
     _LOGGER.debug("Setting up Huerizon integration: %s", entry.entry_id)
 
-    # Seed defaults if any option is missing.
-    merged_opts = {**DEFAULT_OPTIONS, **dict(entry.options or {})}
-    if merged_opts != entry.options:
-        _LOGGER.debug("Applying default options for Huerizon: %s", merged_opts)
-        hass.config_entries.async_update_entry(entry, options=merged_opts)
+    merged = _merge_and_normalize_options(dict(entry.options))
+    if merged != entry.options:
+        _LOGGER.debug("Applying default/normalized options for Huerizon: %s", merged)
+        hass.config_entries.async_update_entry(entry, options=merged)
 
-    # Persist config & options for use by platforms
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN].setdefault(entry.entry_id, {})
-    hass.data[DOMAIN][entry.entry_id]["config"] = dict(entry.data)
-    hass.data[DOMAIN][entry.entry_id]["options"] = dict(merged_opts)
+    domain_bucket: dict[str, dict[str, Any]] = hass.data.setdefault(DOMAIN, {})
+    entry_bucket: dict[str, Any] = domain_bucket.setdefault(entry.entry_id, {})
+    entry_bucket["config"] = dict(entry.data)
+    entry_bucket["options"] = dict(merged)
+    entry_bucket["runtime"] = dict(merged.get("_runtime", {}))
+    entry_bucket["normalize"] = dict(merged.get("_runtime_normalize", {}))
 
-    # Listen for options changes
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    # Register services
     await _async_register_services(hass)
 
-    # Forward platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Handle unloading of a config entry."""
     _LOGGER.debug("Unloading Huerizon integration: %s", entry.entry_id)
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        # Remove our entry bucket but keep DOMAIN root in case other entries exist.
         domain_bucket = hass.data.get(DOMAIN, {})
         if isinstance(domain_bucket, dict):
             domain_bucket.pop(entry.entry_id, None)

@@ -45,19 +45,12 @@ PERCENT_RE = re.compile(r"[%\s]+$")
 
 
 def _norm_key(scale: str) -> str:
-    """Normalize scale tokens by lowercasing and unifying separators."""
     return scale.replace("-", "_").strip().lower()
 
-
-# ---------------------- generic coercion ----------------------
-
-
 def _coerce_float(value: Any) -> Optional[float]:
-    """Best-effort conversion to float. Returns None if not coercible."""
     if value is None:
         return None
     if isinstance(value, (int, float)):
-        # Avoid bool (bool is subclass of int)
         if isinstance(value, bool):
             return float(1 if value else 0)
         return float(value)
@@ -65,35 +58,22 @@ def _coerce_float(value: Any) -> Optional[float]:
         s = value.strip()
         if not s:
             return None
-        # Strip known suffixes then try again
         s = DEGREE_RE.sub("", s)
         s = PERCENT_RE.sub("", s)
         try:
             return float(s)
         except ValueError:
             return None
-    # Fallback: try stringifying
     try:
         return float(str(value))
     except Exception:
         return None
 
-
 def _clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
 
-
-# ---------------------- normalization ----------------------
-
-
 def normalize_hue(raw: Any, scale: str = "auto") -> Tuple[Optional[float], str]:
-    """Normalize hue to degrees [0, 360].
-
-    scale: "auto" | "deg" | "0_360"/"0-360" | "0_255"/"0-255" | "0_1"/"0-1"
-    Returns (hue_deg, notes)
-    """
     notes = []
-    # Pre-hint from symbols
     prehint_deg = False
     if isinstance(raw, str) and "°" in raw:
         prehint_deg = True
@@ -102,7 +82,6 @@ def normalize_hue(raw: Any, scale: str = "auto") -> Tuple[Optional[float], str]:
     if val is None:
         return None, "hue: not a number"
 
-    # Auto detection
     if scale == "auto":
         if prehint_deg:
             scale_eff = "deg"
@@ -117,7 +96,6 @@ def normalize_hue(raw: Any, scale: str = "auto") -> Tuple[Optional[float], str]:
             scale_eff = "0_255"
             notes.append("auto→0_255(range)")
         else:
-            # Out-of-range; default to degrees and clamp
             scale_eff = "deg"
             notes.append("auto→deg(default)")
     else:
@@ -130,23 +108,14 @@ def normalize_hue(raw: Any, scale: str = "auto") -> Tuple[Optional[float], str]:
     elif scale_eff == "0_255":
         hue = _clamp(val, 0.0, 255.0) / 255.0 * 360.0
     else:
-        # Unknown scale; treat as degrees
         hue = _clamp(val, 0.0, 360.0)
         notes.append(f"unknown_scale({scale_eff})→deg")
 
-    # Clamp to [0, 360] (do not wrap 360->0)
     hue = _clamp(hue, 0.0, 360.0)
     return hue, ";".join(notes)
 
-
 def normalize_percent(raw: Any, scale: str = "auto") -> Tuple[Optional[float], str]:
-    """Normalize percent-like values to [0, 100].
-
-    scale: "auto" | "0_100"/"0-100" | "0_255"/"0-255" | "0_1"/"0-1"
-    Returns (percent, notes)
-    """
     notes = []
-    # Pre-hint
     if isinstance(raw, str) and "%" in raw:
         scale_eff = "0_100" if scale == "auto" else _norm_key(scale)
         if scale == "auto":
@@ -172,7 +141,6 @@ def normalize_percent(raw: Any, scale: str = "auto") -> Tuple[Optional[float], s
         else:
             scale_eff = _norm_key(scale)
 
-    # We need val again (may have been coerced above inside branch)
     val2 = _coerce_float(raw)
     if val2 is None:
         return None, "percent: not a number"
@@ -189,20 +157,12 @@ def normalize_percent(raw: Any, scale: str = "auto") -> Tuple[Optional[float], s
 
     return pct, ";".join(notes)
 
-
-# ---------------------- extraction helpers ----------------------
-
-
 def extract_hsb_from_json(
     payload: str,
     hue_scale: str = "auto",
     sat_scale: str = "auto",
     bri_scale: str = "auto",
 ) -> Tuple[Optional[float], Optional[float], Optional[float], str]:
-    """Given a JSON payload, extract hue/saturation/brightness and normalize.
-
-    Returns (hue_deg, sat_pct, bri_pct, notes)
-    """
     notes = []
     try:
         obj = json.loads(payload)
@@ -223,7 +183,6 @@ def extract_hsb_from_json(
 
     return h, s, b, ";".join(filter(None, notes))
 
-
 def extract_hsb_from_states(
     hue_state: Any,
     sat_state: Any,
@@ -232,10 +191,6 @@ def extract_hsb_from_states(
     sat_scale: str = "auto",
     bri_scale: str = "auto",
 ) -> Tuple[Optional[float], Optional[float], Optional[float], str]:
-    """Given three raw state values (often HA state strings), normalize HSB.
-
-    Returns (hue_deg, sat_pct, bri_pct, notes)
-    """
     h, n1 = normalize_hue(hue_state, hue_scale)
     s, n2 = normalize_percent(sat_state, sat_scale)
     b, n3 = normalize_percent(bri_state, bri_scale)
@@ -243,15 +198,7 @@ def extract_hsb_from_states(
     notes = ";".join(filter(None, (n1, n2, n3)))
     return h, s, b, notes
 
-
-# ---------------------- conversion helpers ----------------------
-
-
 def hsb_to_rgb(h_deg: float, s_pct: float, b_pct: float) -> Tuple[int, int, int]:
-    """Convert HSB (Hue[0..360], Sat[0..100], Bri[0..100]) to RGB 0..255.
-
-    Returns (r, g, b) ints in [0,255]. Values are clamped before conversion.
-    """
     h = (h_deg % 360.0) / 360.0
     s = _clamp(s_pct, 0.0, 100.0) / 100.0
     v = _clamp(b_pct, 0.0, 100.0) / 100.0

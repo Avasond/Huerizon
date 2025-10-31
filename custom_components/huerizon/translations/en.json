@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Set up MQTT sky sync for your Huerizon device",
+        "title": "Add Huerizon Sky Sync",
         "description": "Click Submit to add Huerizon, then open Configure to pick camera and lights."
       }
     }
@@ -13,28 +13,84 @@
         "title": "Huerizon Options",
         "description": "Choose how to read sky color data and which lights to sync.",
         "data": {
-          "source_mode": "HSB Source Mode",
-          "json_sensor": "JSON state sensor",
-          "state_h_entity": "Hue entity",
-          "state_s_entity": "Saturation entity",
-          "state_b_entity": "Brightness entity",
-          "hue_scale": "Hue scale",
-          "percent_scale": "Saturation/Brightness scale",
           "source_camera": "Source camera",
-          "target_lights": "Target lights"
+          "target_lights": "Target lights",
+          "input_format": "Input format",
+          "hue_scale": "Hue scale",
+          "percent_scale": "Percent scale",
+          "apply_mode": "Apply color mode",
+          "only_at_night": "Activate only at night",
+          "active_start": "Active start time",
+          "active_end": "Active end time",
+          "active_days": "Active days of week",
+          "min_delta": "Minimum color delta",
+          "rate_limit_sec": "Rate limit (seconds)"
         },
         "data_description": {
-          "source_mode": "Choose whether Huerizon reads a single JSON state or three separate entities.",
-          "json_sensor": "Select the sensor that publishes a JSON payload with hue, saturation, and brightness.",
-          "state_h_entity": "Entity that provides hue.",
-          "state_s_entity": "Entity that provides saturation.",
-          "state_b_entity": "Entity that provides brightness.",
-          "hue_scale": "If not set to Auto, tell Huerizon how hue is scaled.",
-          "percent_scale": "If not set to Auto, tell Huerizon how saturation and brightness are scaled.",
-          "source_camera": "Optional camera used for previews.",
-          "target_lights": "Lights that will be synchronized to the sky color."
+          "source_camera": "Optional camera entity for sky images.",
+          "target_lights": "Select the lights that will receive updates from your sky data source.",
+          "input_format": "Select the color format that your source provides (XY, HS, RGB, or Color Temperature).",
+          "hue_scale": "How hue values are scaled by your source (auto, 0–360, 0–255, or 0–1).",
+          "percent_scale": "How saturation/brightness values are scaled by your source (auto, 0–100, 0–255, or 0–1).",
+          "apply_mode": "Choose whether to prioritize XY, HS, or Color Temp when a light supports multiple modes.",
+          "only_at_night": "Enable syncing only when the sun is below the horizon.",
+          "active_start": "Start time for active syncing period (HH:MM:SS).",
+          "active_end": "End time for active syncing period (HH:MM:SS).",
+          "active_days": "Days of the week when syncing should be active.",
+          "min_delta": "Ignore small color changes below this threshold.",
+          "rate_limit_sec": "Minimum seconds between updates to lights."
+        }
+      },
+      "format_xy": {
+        "title": "XY Input",
+        "data": {
+          "x_entity": "X value entity",
+          "y_entity": "Y value entity"
+        },
+        "data_description": {
+          "x_entity": "Entity providing the X color coordinate.",
+          "y_entity": "Entity providing the Y color coordinate."
+        }
+      },
+      "format_hs": {
+        "title": "HS Input",
+        "data": {
+          "state_h_entity": "Hue entity",
+          "state_s_entity": "Saturation entity"
+        },
+        "data_description": {
+          "state_h_entity": "Entity providing the Hue value.",
+          "state_s_entity": "Entity providing the Saturation value."
+        }
+      },
+      "format_rgb": {
+        "title": "RGB Input",
+        "data": {
+          "r_entity": "Red entity",
+          "g_entity": "Green entity",
+          "b_entity": "Blue entity"
+        },
+        "data_description": {
+          "r_entity": "Entity providing the Red channel value.",
+          "g_entity": "Entity providing the Green channel value.",
+          "b_entity": "Entity providing the Blue channel value."
+        }
+      },
+      "format_temp": {
+        "title": "Color Temperature Input",
+        "data": {
+          "mireds_entity": "Mireds entity",
+          "kelvin_entity": "Kelvin entity"
+        },
+        "data_description": {
+          "mireds_entity": "Entity providing color temperature in mireds.",
+          "kelvin_entity": "Entity providing color temperature in Kelvin."
         }
       }
+    },
+    "error": {
+      "require_one_temp_source": "Please select either a Mireds or Kelvin entity.",
+      "invalid_source_camera": "Please select a valid camera entity or leave blank."
     }
   }
 }

@@ -1,6 +1,6 @@
 apply_sky:
   name: Apply Sky to Lights
-  description: Set selected lights to the current sky hue, saturation, and brightness.
+  description: Apply the current sky color data (XY, RGB, or HSB) to selected lights.
   fields:
     target:
       name: Target
@@ -9,30 +9,51 @@ apply_sky:
         target:
           entity:
             domain: light
-    hue:
-      name: Hue
-      description: Hue value (0–360)
-      example: 210
+
+    xy_color:
+      name: XY Color
+      description: CIE 1931 XY coordinates (list of two floats, e.g. [0.31, 0.33])
+      example: [0.3029, 0.3397]
       selector:
-        number:
-          min: 0
-          max: 360
-          step: 1
-    saturation:
-      name: Saturation
-      description: Saturation (0–100)
-      example: 45
+        object: {}
+
+    hs_color:
+      name: HS Color
+      description: Hue and Saturation in degrees and percent (e.g. [155, 10])
+      example: [155, 10]
       selector:
-        number:
-          min: 0
-          max: 100
-          step: 1
-    brightness_pct:
+        object: {}
+
+    rgb_color:
+      name: RGB Color
+      description: Red, Green, Blue values (0–255)
+      example: [146, 163, 156]
+      selector:
+        object: {}
+
+    brightness:
       name: Brightness
-      description: Brightness percent (0–100)
-      example: 70
+      description: Brightness value (0–255)
+      example: 163
+      selector:
+        number:
+          min: 0
+          max: 255
+          step: 1
+
+    brightness_pct:
+      name: Brightness Percent
+      description: Brightness as a percent (0–100)
+      example: 64
       selector:
         number:
           min: 0
           max: 100
           step: 1
+
+    source:
+      name: Source
+      description: Optional label or entity providing the color data (e.g. PiSky, MQTT)
+      example: "pisky"
+      selector:
+        text:

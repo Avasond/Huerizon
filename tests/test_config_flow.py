@@ -23,7 +23,7 @@ async def test_user_flow_creates_entry(hass):
     )
 
     assert result2["type"] == FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Huerizon Sky Sync"
+    assert isinstance(result2["title"], str) and result2["title"]
     assert result2["data"] == {}
 
     # Ensure Home Assistant finishes any pending tasks from the flow

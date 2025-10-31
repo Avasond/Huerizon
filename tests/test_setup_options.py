@@ -28,10 +28,10 @@ async def test_setup_entry_seeds_default_options(hass: HomeAssistant) -> None:
     opts = hass.data[DOMAIN][entry.entry_id]["options"]
     for key in (
         "only_at_night",
-        "active_start_time",
-        "active_end_time",
+        "active_start",
+        "active_end",
         "active_days",
-        "min_color_delta",
+        "min_delta",
         "rate_limit_sec",
     ):
         assert key in opts
@@ -43,7 +43,7 @@ async def test_setup_entry_seeds_default_options(hass: HomeAssistant) -> None:
 
 @pytest.mark.asyncio
 async def test_apply_sky_service_turns_on_light(hass: HomeAssistant) -> None:
-    """apply_sky should call light.turn_on with hs_color + brightness_pct."""
+    """apply_sky should call light.turn_on with hs_color + brightness (0–255)."""
     entry = MockConfigEntry(domain=DOMAIN, data={}, options={}, title="Service Test")
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -55,7 +55,7 @@ async def test_apply_sky_service_turns_on_light(hass: HomeAssistant) -> None:
     await hass.services.async_call(
         DOMAIN,
         "apply_sky",
-        {"hue": 15, "saturation": 45, "brightness_pct": 60},
+        {"hs_color": [15, 45], "brightness": 153, "source": "test"},
         target={"entity_id": "light.office"},
         blocking=True,
     )
@@ -69,7 +69,8 @@ async def test_apply_sky_service_turns_on_light(hass: HomeAssistant) -> None:
     )
     assert "light.office" in entity_ids
     assert payload["hs_color"] == [15.0, 45.0]
-    assert payload["brightness_pct"] == 60.0
+    assert payload["brightness"] == 153
+    assert "brightness_pct" not in payload
 
 
 @pytest.mark.asyncio
@@ -95,10 +96,10 @@ async def test_options_update_triggers_reload(hass: HomeAssistant) -> None:
 async def test_options_flow_roundtrip_no_400(hass: HomeAssistant) -> None:
     """Options flow should progress without raising and end with create_entry (no 400).
 
-    This simulates the UI sequence:
+    This simulates the new UI sequence:
       1) open options -> init form
-      2) submit minimal valid data for JSON mode -> next step
-      3) submit JSON sensor details -> create_entry
+      2) submit minimal valid data choosing XY input_format -> next step
+      3) submit XY entity selections -> create_entry
     """
     # Ensure the integration is set up so options flow is available
     entry = MockConfigEntry(domain=DOMAIN, data={}, options={}, title="Options Flow")
@@ -110,36 +111,30 @@ async def test_options_flow_roundtrip_no_400(hass: HomeAssistant) -> None:
     assert result["type"] == "form"
     assert result["step_id"] == "init"
 
-    # Import constants to provide valid values
+    # Import constants to provide valid values (new flow)
     from custom_components.huerizon.const import (
         CONF_SOURCE_CAMERA,
         CONF_TARGET_LIGHTS,
-        CONF_SOURCE_MODE,
-        SOURCE_MODE_JSON,
-        CONF_HUE_SCALE,
-        CONF_PERCENT_SCALE,
-        SCALE_AUTO,
+        CONF_INPUT_FORMAT,
+        FORMAT_XY,
         CONF_ONLY_AT_NIGHT,
         CONF_ACTIVE_START,
         CONF_ACTIVE_END,
         CONF_ACTIVE_DAYS,
         CONF_MIN_DELTA,
         CONF_RATE_LIMIT_SEC,
-        CONF_JSON_SENSOR,
-        CONF_JSON_HKEY,
-        CONF_JSON_SKEY,
-        CONF_JSON_BKEY,
+        CONF_X_ENTITY,
+        CONF_Y_ENTITY,
+        CONF_BRIGHTNESS_ENTITY,
     )
 
-    # Step 2: submit the init form with minimal-but-valid values
+    # Step 2: submit the init form with minimal-but-valid values for the new flow
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         {
             CONF_SOURCE_CAMERA: None,
             CONF_TARGET_LIGHTS: ["light.office"],  # list required
-            CONF_SOURCE_MODE: SOURCE_MODE_JSON,     # choose JSON path
-            CONF_HUE_SCALE: SCALE_AUTO,
-            CONF_PERCENT_SCALE: SCALE_AUTO,
+            CONF_INPUT_FORMAT: FORMAT_XY,          # choose XY path
             CONF_ONLY_AT_NIGHT: False,
             CONF_ACTIVE_START: "00:00:00",
             CONF_ACTIVE_END: "23:59:59",
@@ -150,16 +145,15 @@ async def test_options_flow_roundtrip_no_400(hass: HomeAssistant) -> None:
     )
 
     assert result["type"] == "form"
-    assert result["step_id"] == "source_json"
+    assert result["step_id"] == "format_xy"
 
-    # Step 3: submit the JSON sensor keys
+    # Step 3: submit the XY entity selections
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         {
-            CONF_JSON_SENSOR: "sensor.sky_color",
-            CONF_JSON_HKEY: "hue",
-            CONF_JSON_SKEY: "saturation",
-            CONF_JSON_BKEY: "brightness",
+            CONF_X_ENTITY: "sensor.sky_x",
+            CONF_Y_ENTITY: "sensor.sky_y",
+            CONF_BRIGHTNESS_ENTITY: "sensor.sky_bri",
         },
     )
 
