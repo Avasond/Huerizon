@@ -1,59 +1,78 @@
 apply_sky:
   name: Apply Sky to Lights
-  description: Apply the current sky color data (XY, RGB, or HSB) to selected lights.
+  description: Apply the current sky color data (XY, RGB, or HS) to selected lights.
+  target:
+    entity:
+      domain: light
+    area: {}
+    device: {}
   fields:
-    target:
-      name: Target
-      description: Lights or areas to update.
-      selector:
-        target:
-          entity:
-            domain: light
-
     xy_color:
       name: XY Color
-      description: CIE 1931 XY coordinates (list of two floats, e.g. [0.31, 0.33])
+      description: CIE 1931 XY coordinates
       example: [0.3029, 0.3397]
       selector:
         object: {}
-
     hs_color:
       name: HS Color
-      description: Hue and Saturation in degrees and percent (e.g. [155, 10])
+      description: [Hue, Saturation]
       example: [155, 10]
       selector:
         object: {}
-
     rgb_color:
       name: RGB Color
-      description: Red, Green, Blue values (0–255)
+      description: [R, G, B]
       example: [146, 163, 156]
       selector:
         object: {}
-
+    color_temp:
+      name: Color temperature (mireds)
+      description: Mireds value
+      example: 300
+      selector:
+        number:
+          min: 153
+          max: 500
+          step: 1
+    color_temp_kelvin:
+      name: Color temperature (kelvin)
+      description: Kelvin value
+      example: 4000
+      selector:
+        number:
+          min: 2000
+          max: 6500
+          step: 50
     brightness:
       name: Brightness
-      description: Brightness value (0–255)
+      description: 0–255
       example: 163
       selector:
         number:
           min: 0
           max: 255
           step: 1
-
     brightness_pct:
       name: Brightness Percent
-      description: Brightness as a percent (0–100)
+      description: 0–100
       example: 64
       selector:
         number:
           min: 0
           max: 100
           step: 1
-
+    transition:
+      name: Transition
+      description: Seconds to transition
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 300
+          step: 1
     source:
       name: Source
-      description: Optional label or entity providing the color data (e.g. PiSky, MQTT)
-      example: "pisky"
+      description: Optional label or entity providing the color data
+      example: pisky
       selector:
         text:

@@ -8,10 +8,11 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "huerizon"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
-TOPIC_IMAGE_ORIGINAL = f"{DOMAIN}/image/original"
-TOPIC_IMAGE_FILTERED = f"{DOMAIN}/image/filtered"
+# Camera topics - must match what PiSky publishes to
+TOPIC_IMAGE_ORIGINAL = "sky/image/original"
+TOPIC_IMAGE_FILTERED = "sky/image/filtered"
 
 CAMERA_ORIGINAL_NAME = "Huerizon Sky Image"
 CAMERA_FILTERED_NAME = "Huerizon Sky Filtered"

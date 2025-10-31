@@ -1,11 +1,15 @@
 import logging
 from typing import Any, Tuple
 from collections.abc import Mapping
+from datetime import datetime, timedelta
 
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, Event, callback
 from homeassistant.helpers import service as ha_service
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.sun import get_astral_event_date
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, DEFAULT_OPTIONS as _DEFAULTS
 
@@ -138,6 +142,19 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     if merged != entry.options:
         hass.config_entries.async_update_entry(entry, options=merged)
 
+    # Restart coordinator with new settings
+    coordinator = entry_bucket.get("coordinator")
+    if coordinator:
+        await coordinator.async_stop()
+
+    target_lights = merged.get("target_lights", [])
+    if target_lights and runtime.get("entities"):
+        new_coordinator = HuerizonCoordinator(hass, entry.entry_id, runtime, target_lights)
+        entry_bucket["coordinator"] = new_coordinator
+        await new_coordinator.async_start()
+    else:
+        entry_bucket.pop("coordinator", None)
+
     _LOGGER.debug("Huerizon options updated")
 
 
@@ -155,6 +172,9 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         hue = call.data.get("hue")
         sat = call.data.get("saturation")
         bri_pct = call.data.get("brightness_pct")
+        ct_mireds = call.data.get("color_temp")
+        ct_kelvin = call.data.get("color_temp_kelvin")
+        transition = call.data.get("transition")
 
         entity_ids: set[str] = await ha_service.async_extract_entity_ids(hass, call)
         if not entity_ids:
@@ -184,6 +204,17 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             except Exception:
                 _LOGGER.debug("Invalid legacy hue/saturation payload: %s, %s", hue, sat)
 
+        if ct_mireds is not None:
+            try:
+                service_data["color_temp"] = int(float(ct_mireds))
+            except Exception:
+                _LOGGER.debug("Invalid color_temp payload: %s", ct_mireds)
+        elif ct_kelvin is not None:
+            try:
+                service_data["color_temp_kelvin"] = int(float(ct_kelvin))
+            except Exception:
+                _LOGGER.debug("Invalid color_temp_kelvin payload: %s", ct_kelvin)
+
         if bri is not None:
             try:
                 bri_val = int(float(bri))
@@ -200,6 +231,12 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             except Exception:
                 _LOGGER.debug("Invalid brightness_pct payload: %s", bri_pct)
 
+        if transition is not None:
+            try:
+                service_data["transition"] = float(transition)
+            except Exception:
+                _LOGGER.debug("Invalid transition payload: %s", transition)
+
         if source:
             _LOGGER.debug(
                 "apply_sky called from source=%s payload=%s",
@@ -210,6 +247,189 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         await hass.services.async_call("light", "turn_on", service_data, blocking=False)
 
     hass.services.async_register(DOMAIN, SERVICE_APPLY_SKY, _handle_apply_sky)
+
+
+class HuerizonCoordinator:
+    """Coordinator to track entity state changes and trigger light updates."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry_id: str,
+        runtime: dict[str, Any],
+        target_lights: list[str],
+    ) -> None:
+        self.hass = hass
+        self.entry_id = entry_id
+        self.runtime = runtime
+        self.target_lights = target_lights
+        self._unsub_track = None
+        self._last_update_time = None
+
+    def _should_update(self) -> bool:
+        """Check if update is allowed based on schedule and rate limit."""
+        schedule = self.runtime.get("schedule", {})
+
+        # Check rate limit
+        rate_limit = schedule.get("rate_limit_sec", 0)
+        if rate_limit > 0 and self._last_update_time:
+            now = dt_util.utcnow()
+            if (now - self._last_update_time).total_seconds() < rate_limit:
+                return False
+
+        # Check only_at_night
+        if schedule.get("only_at_night", False):
+            try:
+                next_sunrise = get_astral_event_date(self.hass, "sunrise", dt_util.now())
+                next_sunset = get_astral_event_date(self.hass, "sunset", dt_util.now())
+                now = dt_util.now()
+
+                if next_sunrise and next_sunset:
+                    # If sunrise is before sunset, it means we're currently in daytime
+                    if next_sunrise < next_sunset:
+                        return False
+            except Exception as e:
+                _LOGGER.debug("Could not determine day/night status: %s", e)
+
+        # Check active time range
+        active_start = schedule.get("active_start")
+        active_end = schedule.get("active_end")
+        if active_start or active_end:
+            now = dt_util.now()
+            current_time = now.time()
+
+            if active_start and active_end:
+                from datetime import time as dt_time
+                if isinstance(active_start, str):
+                    h, m, s = active_start.split(":")
+                    start_time = dt_time(int(h), int(m), int(s))
+                else:
+                    start_time = active_start
+
+                if isinstance(active_end, str):
+                    h, m, s = active_end.split(":")
+                    end_time = dt_time(int(h), int(m), int(s))
+                else:
+                    end_time = active_end
+
+                if start_time <= end_time:
+                    if not (start_time <= current_time <= end_time):
+                        return False
+                else:  # Crosses midnight
+                    if not (current_time >= start_time or current_time <= end_time):
+                        return False
+
+        # Check active days
+        active_days = schedule.get("active_days", [])
+        if active_days:
+            now = dt_util.now()
+            current_day = now.weekday()
+            if current_day not in active_days:
+                return False
+
+        return True
+
+    def _get_entity_value(self, entity_id: str) -> float | None:
+        """Get numeric value from entity state."""
+        if not entity_id:
+            return None
+
+        state = self.hass.states.get(entity_id)
+        if not state:
+            return None
+
+        try:
+            return float(state.state)
+        except (ValueError, TypeError):
+            return None
+
+    @callback
+    def _handle_state_change(self, event: Event) -> None:
+        """Handle state change of monitored entities."""
+        if not self._should_update():
+            _LOGGER.debug("Update skipped due to schedule/rate limit")
+            return
+
+        entities = self.runtime.get("entities", {})
+        input_format = self.runtime.get("input_format", "xy")
+
+        service_data: dict[str, Any] = {}
+
+        # Collect values based on input format
+        if input_format == "xy":
+            x = self._get_entity_value(entities.get("x"))
+            y = self._get_entity_value(entities.get("y"))
+            if x is not None and y is not None:
+                service_data["xy_color"] = [x, y]
+
+        elif input_format == "hs":
+            h = self._get_entity_value(entities.get("h"))
+            s = self._get_entity_value(entities.get("s"))
+            if h is not None and s is not None:
+                service_data["hs_color"] = [h, s]
+
+        elif input_format == "rgb":
+            r = self._get_entity_value(entities.get("r"))
+            g = self._get_entity_value(entities.get("g"))
+            b = self._get_entity_value(entities.get("b"))
+            if r is not None and g is not None and b is not None:
+                service_data["rgb_color"] = [int(r), int(g), int(b)]
+
+        elif input_format == "color_temp":
+            mireds = self._get_entity_value(entities.get("mireds"))
+            kelvin = self._get_entity_value(entities.get("kelvin"))
+            if mireds is not None:
+                service_data["color_temp"] = int(mireds)
+            elif kelvin is not None:
+                service_data["color_temp_kelvin"] = int(kelvin)
+
+        # Add brightness if configured
+        brightness = self._get_entity_value(entities.get("brightness"))
+        if brightness is not None:
+            service_data["brightness"] = int(brightness)
+
+        # Only call service if we have color data
+        if not service_data or (len(service_data) == 1 and "brightness" in service_data):
+            _LOGGER.debug("No valid color data to send")
+            return
+
+        # Add target lights and source
+        service_data["entity_id"] = self.target_lights
+        service_data["source"] = "huerizon_auto"
+
+        _LOGGER.debug("Calling light.turn_on with data: %s", service_data)
+
+        # Call the service directly with properly formatted data
+        # Use async_create_task since we're in a callback (can't use await)
+        self.hass.async_create_task(
+            self.hass.services.async_call("light", "turn_on", service_data, blocking=False)
+        )
+
+        self._last_update_time = dt_util.utcnow()
+
+    async def async_start(self) -> None:
+        """Start tracking entity state changes."""
+        entities = self.runtime.get("entities", {})
+        entity_ids = [
+            eid for eid in entities.values()
+            if eid and isinstance(eid, str) and eid.strip()
+        ]
+
+        if not entity_ids:
+            _LOGGER.warning("No entities configured to monitor")
+            return
+
+        _LOGGER.debug("Tracking entities: %s", entity_ids)
+
+        self._unsub_track = async_track_state_change_event(
+            self.hass, entity_ids, self._handle_state_change
+        )
+
+    async def async_stop(self) -> None:
+        """Stop tracking entity state changes."""
+        if self._unsub_track:
+            self._unsub_track()
+            self._unsub_track = None
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -235,6 +455,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     await _async_register_services(hass)
+
+    # Set up the coordinator to monitor entities and trigger updates
+    target_lights = merged.get("target_lights", [])
+    if target_lights and runtime.get("entities"):
+        coordinator = HuerizonCoordinator(hass, entry.entry_id, runtime, target_lights)
+        entry_bucket["coordinator"] = coordinator
+        await coordinator.async_start()
+        entry.async_on_unload(coordinator.async_stop)
+    else:
+        _LOGGER.warning("No target lights or entities configured, automation disabled")
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
