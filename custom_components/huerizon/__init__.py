@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, Tuple
 from collections.abc import Mapping
 
 from homeassistant.const import Platform
@@ -24,16 +24,13 @@ _DEFAULTS_FALLBACK: dict[str, Any] = {
     "state_h_entity": "",
     "state_s_entity": "",
     "state_b_entity": "",
-
     "normalize": {
         "strip_symbols": True,
         "coerce_numbers": True,
         "clamp": True,
         "brightness_is_percent": False,
     },
-
     "apply_mode": "prefer_xy",
-
     "only_at_night": False,
     "active_start": None,
     "active_end": None,
@@ -64,7 +61,7 @@ def _coerce_bool(value: Any, default: bool) -> bool:
     return default
 
 
-def _merge_and_normalize_options(options: Mapping[str, Any]) -> dict[str, Any]:
+def _merge_and_normalize_options(options: Mapping[str, Any]) -> Tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     merged: dict[str, Any] = {**DEFAULT_OPTIONS, **dict(options or {})}
 
     for k in ("min_delta", "rate_limit_sec"):
@@ -86,8 +83,6 @@ def _merge_and_normalize_options(options: Mapping[str, Any]) -> dict[str, Any]:
             norm_src.get("brightness_is_percent"), False
         ),
     }
-    merged["normalize"] = dict(norm)
-    merged["_runtime_normalize"] = dict(norm)
 
     def _none_if_empty(val: Any) -> Any:
         if val is None:
@@ -96,7 +91,7 @@ def _merge_and_normalize_options(options: Mapping[str, Any]) -> dict[str, Any]:
             return None
         return val
 
-    merged["_runtime"] = {
+    runtime = {
         "input_format": (merged.get("input_format") or "xy").lower(),
         "entities": {
             "x": merged.get("x_entity", ""),
@@ -121,21 +116,29 @@ def _merge_and_normalize_options(options: Mapping[str, Any]) -> dict[str, Any]:
         },
     }
 
-    return merged
+    merged["normalize"] = dict(norm)
+
+    return merged, runtime, dict(norm)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    merged = _merge_and_normalize_options(dict(entry.options))
+    merged, runtime, norm = _merge_and_normalize_options(dict(entry.options))
 
     data = hass.data.setdefault(DOMAIN, {})
     entry_bucket = data.setdefault(entry.entry_id, {})
     entry_bucket["options"] = merged
-    entry_bucket["runtime"] = merged.get("_runtime", {})
-    entry_bucket["normalize"] = merged.get("_runtime_normalize", {})
+    entry_bucket["runtime"] = runtime
+    entry_bucket["normalize"] = norm
 
-    _LOGGER.debug("Huerizon options updated: %s", merged)
+    try:
+        entry.runtime_data = {"runtime": runtime, "normalize": norm}
+    except Exception:
+        pass
 
-    hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
+    if merged != entry.options:
+        hass.config_entries.async_update_entry(entry, options=merged)
+
+    _LOGGER.debug("Huerizon options updated")
 
 
 async def _async_register_services(hass: HomeAssistant) -> None:
@@ -212,17 +215,22 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Setting up Huerizon integration: %s", entry.entry_id)
 
-    merged = _merge_and_normalize_options(dict(entry.options))
+    merged, runtime, norm = _merge_and_normalize_options(dict(entry.options))
+
     if merged != entry.options:
-        _LOGGER.debug("Applying default/normalized options for Huerizon: %s", merged)
         hass.config_entries.async_update_entry(entry, options=merged)
 
     domain_bucket: dict[str, dict[str, Any]] = hass.data.setdefault(DOMAIN, {})
     entry_bucket: dict[str, Any] = domain_bucket.setdefault(entry.entry_id, {})
     entry_bucket["config"] = dict(entry.data)
     entry_bucket["options"] = dict(merged)
-    entry_bucket["runtime"] = dict(merged.get("_runtime", {}))
-    entry_bucket["normalize"] = dict(merged.get("_runtime_normalize", {}))
+    entry_bucket["runtime"] = dict(runtime)
+    entry_bucket["normalize"] = dict(norm)
+
+    try:
+        entry.runtime_data = {"runtime": dict(runtime), "normalize": dict(norm)}
+    except Exception:
+        pass
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 

@@ -180,11 +180,8 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_SOURCE_CAMERA,
                     default=(opts.get(CONF_SOURCE_CAMERA) if opts.get(CONF_SOURCE_CAMERA) is not None else vol.UNDEFINED),
-                ): vol.Any(
-                    selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain=["camera"])
-                    ),
-                    None,
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain=["camera"])
                 ),
                 vol.Required(
                     CONF_TARGET_LIGHTS,
