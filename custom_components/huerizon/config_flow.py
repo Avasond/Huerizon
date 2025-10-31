@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from homeassistant import config_entries
-import voluptuous as vol
-from homeassistant.helpers import selector
+from homeassistant import config_entries # type: ignore
+import voluptuous as vol # type: ignore
+from homeassistant.helpers import selector # type: ignore
 
 from .const import (
     DOMAIN,
