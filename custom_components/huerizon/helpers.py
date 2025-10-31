@@ -27,7 +27,7 @@ any auto-inference decisions that were applied (can be surfaced in logs).
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional, Tuple
 import json
 import math
 import re

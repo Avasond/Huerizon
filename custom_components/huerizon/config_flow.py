@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict
+from homeassistant.data_entry_flow import FlowResult  # type: ignore
 
 from homeassistant import config_entries # type: ignore
 import voluptuous as vol # type: ignore
@@ -60,13 +61,13 @@ SCALE_OPTIONS_PERCENT = [
 ]
 
 DOW_OPTIONS = [
-    {"value": 0, "label": "Mon"},
-    {"value": 1, "label": "Tue"},
-    {"value": 2, "label": "Wed"},
-    {"value": 3, "label": "Thu"},
-    {"value": 4, "label": "Fri"},
-    {"value": 5, "label": "Sat"},
-    {"value": 6, "label": "Sun"},
+    {"value": "0", "label": "Mon"},
+    {"value": "1", "label": "Tue"},
+    {"value": "2", "label": "Wed"},
+    {"value": "3", "label": "Thu"},
+    {"value": "4", "label": "Fri"},
+    {"value": "5", "label": "Sat"},
+    {"value": "6", "label": "Sun"},
 ]
 
 
@@ -75,7 +76,7 @@ class HuerizonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(self, user_input: Dict[str, Any] | None = None):
+    async def async_step_user(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step.
 
         We don't require settings at install time; users will choose the
@@ -88,7 +89,7 @@ class HuerizonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="user", data_schema=vol.Schema({}))
 
     @staticmethod
-    def async_get_options_flow(config_entry: config_entries.ConfigEntry):
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
         return HuerizonOptionsFlowHandler(config_entry)
 
 
@@ -103,9 +104,46 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
         self._opts: Dict[str, Any] = base
         self._working: Dict[str, Any] = {}
 
-    async def async_step_init(self, user_input: Dict[str, Any] | None = None):
+        # Normalize legacy/empty values for selectors
+        # Ensure TimeSelector fields are None instead of empty strings
+        for _k in (CONF_ACTIVE_START, CONF_ACTIVE_END):
+            if self._opts.get(_k) == "":
+                self._opts[_k] = None
+        # Ensure weekday options are strings for SelectSelector(multiple=True)
+        if isinstance(self._opts.get(CONF_ACTIVE_DAYS), list):
+            self._opts[CONF_ACTIVE_DAYS] = [str(v) for v in self._opts[CONF_ACTIVE_DAYS]]
+        # Ensure camera is None (not empty string)
+        if self._opts.get(CONF_SOURCE_CAMERA) == "":
+            self._opts[CONF_SOURCE_CAMERA] = None
+
+    def _finalize(self) -> Dict[str, Any]:
+        """Merge working options and coerce types for storage."""
+        merged: Dict[str, Any] = {**self._opts, **self._working}
+
+        # Coerce weekday strings back to ints for downstream consumers
+        if CONF_ACTIVE_DAYS in merged and isinstance(merged[CONF_ACTIVE_DAYS], list):
+            merged[CONF_ACTIVE_DAYS] = [
+                int(v) for v in merged[CONF_ACTIVE_DAYS]
+                if isinstance(v, (str, int)) and str(v).isdigit()
+            ]
+
+        # Ensure time fields store as None (not empty strings)
+        for _k in (CONF_ACTIVE_START, CONF_ACTIVE_END):
+            if merged.get(_k) in ("", None):
+                merged[_k] = None
+
+        # Ensure camera stores as None (not empty string)
+        if merged.get(CONF_SOURCE_CAMERA) in ("", None):
+            merged[CONF_SOURCE_CAMERA] = None
+
+        return merged
+
+    async def async_step_init(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """First page: choose camera, target lights, source mode, and scales."""
         if user_input is not None:
+            # Normalize camera: allow None when not needed (e.g., JSON mode)
+            if not user_input.get(CONF_SOURCE_CAMERA):
+                user_input[CONF_SOURCE_CAMERA] = None
             # Stash and route based on mode
             self._working.update(user_input)
             mode = user_input.get(CONF_SOURCE_MODE, SOURCE_MODE_JSON)
@@ -121,9 +159,12 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
                 # Camera to preview and for future features (optional)
                 vol.Optional(
                     CONF_SOURCE_CAMERA,
-                    default=opts.get(CONF_SOURCE_CAMERA, ""),
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=["camera"])
+                    default=(opts.get(CONF_SOURCE_CAMERA) if opts.get(CONF_SOURCE_CAMERA) is not None else None),
+                ): vol.Any(
+                    None,
+                    selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain=["camera"])
+                    ),
                 ),
                 # One or more lights to drive
                 vol.Required(
@@ -176,21 +217,15 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
                 ): selector.BooleanSelector(),
                 vol.Optional(
                     CONF_ACTIVE_START,
-                    default=opts.get(
-                        CONF_ACTIVE_START, DEFAULT_OPTIONS.get(CONF_ACTIVE_START, "")
-                    ),
+                    default=(opts.get(CONF_ACTIVE_START) if opts.get(CONF_ACTIVE_START) is not None else vol.UNDEFINED),
                 ): selector.TimeSelector(),
                 vol.Optional(
                     CONF_ACTIVE_END,
-                    default=opts.get(
-                        CONF_ACTIVE_END, DEFAULT_OPTIONS.get(CONF_ACTIVE_END, "")
-                    ),
+                    default=(opts.get(CONF_ACTIVE_END) if opts.get(CONF_ACTIVE_END) is not None else vol.UNDEFINED),
                 ): selector.TimeSelector(),
                 vol.Optional(
                     CONF_ACTIVE_DAYS,
-                    default=opts.get(
-                        CONF_ACTIVE_DAYS, DEFAULT_OPTIONS.get(CONF_ACTIVE_DAYS, [])
-                    ),
+                    default=[str(v) for v in opts.get(CONF_ACTIVE_DAYS, DEFAULT_OPTIONS.get(CONF_ACTIVE_DAYS, []))],
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=DOW_OPTIONS, multiple=True, mode="list"
@@ -217,13 +252,12 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_show_form(step_id="init", data_schema=schema)
 
-    async def async_step_source_json(self, user_input: Dict[str, Any] | None = None):
+    async def async_step_source_json(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Configure single-sensor JSON source."""
         if user_input is not None:
             self._working.update(user_input)
             # Persist everything
-            merged = {**self._opts, **self._working}
-            return self.async_create_entry(title="", data=merged)
+            return self.async_create_entry(title="", data=self._finalize())
 
         opts = self._opts
 
@@ -232,7 +266,7 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
                 # Sensor entity whose state is JSON like {"hue": 123, "saturation": 45, "brightness": 67}
                 vol.Required(
                     CONF_JSON_SENSOR,
-                    default=opts.get(CONF_JSON_SENSOR, ""),
+                    default=(opts.get(CONF_JSON_SENSOR) if opts.get(CONF_JSON_SENSOR) is not None else vol.UNDEFINED),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain=["sensor"])
                 ),
@@ -254,12 +288,11 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_show_form(step_id="source_json", data_schema=schema)
 
-    async def async_step_source_states(self, user_input: Dict[str, Any] | None = None):
+    async def async_step_source_states(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Configure three separate sensor entities for H/S/B."""
         if user_input is not None:
             self._working.update(user_input)
-            merged = {**self._opts, **self._working}
-            return self.async_create_entry(title="", data=merged)
+            return self.async_create_entry(title="", data=self._finalize())
 
         opts = self._opts
 
@@ -267,19 +300,19 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
             {
                 vol.Required(
                     CONF_STATE_H_ENTITY,
-                    default=opts.get(CONF_STATE_H_ENTITY, ""),
+                    default=(opts.get(CONF_STATE_H_ENTITY) if opts.get(CONF_STATE_H_ENTITY) is not None else vol.UNDEFINED),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain=["sensor", "number"])
                 ),
                 vol.Required(
                     CONF_STATE_S_ENTITY,
-                    default=opts.get(CONF_STATE_S_ENTITY, ""),
+                    default=(opts.get(CONF_STATE_S_ENTITY) if opts.get(CONF_STATE_S_ENTITY) is not None else vol.UNDEFINED),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain=["sensor", "number"])
                 ),
                 vol.Required(
                     CONF_STATE_B_ENTITY,
-                    default=opts.get(CONF_STATE_B_ENTITY, ""),
+                    default=(opts.get(CONF_STATE_B_ENTITY) if opts.get(CONF_STATE_B_ENTITY) is not None else vol.UNDEFINED),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain=["sensor", "number"])
                 ),

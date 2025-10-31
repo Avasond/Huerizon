@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import PERCENTAGE
 from homeassistant.components import mqtt
 
 from .const import (

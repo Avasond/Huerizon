@@ -6,7 +6,6 @@ from homeassistant.components import mqtt
 from homeassistant.components.camera import Camera
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from .const import (
     DOMAIN,
