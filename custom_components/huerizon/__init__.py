@@ -176,7 +176,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         ct_kelvin = call.data.get("color_temp_kelvin")
         transition = call.data.get("transition")
 
-        entity_ids: set[str] = await ha_service.async_extract_entity_ids(hass, call)
+        entity_ids: set[str] = ha_service.async_extract_entity_ids(call)
         if not entity_ids:
             _LOGGER.warning("huerizon.apply_sky called without target lights")
             return
@@ -204,16 +204,19 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             except Exception:
                 _LOGGER.debug("Invalid legacy hue/saturation payload: %s, %s", hue, sat)
 
-        if ct_mireds is not None:
-            try:
-                service_data["color_temp"] = int(float(ct_mireds))
-            except Exception:
-                _LOGGER.debug("Invalid color_temp payload: %s", ct_mireds)
-        elif ct_kelvin is not None:
+        # Color temperature handling block (reversed priority, new logic)
+        if ct_kelvin is not None:
             try:
                 service_data["color_temp_kelvin"] = int(float(ct_kelvin))
             except Exception:
                 _LOGGER.debug("Invalid color_temp_kelvin payload: %s", ct_kelvin)
+        elif ct_mireds is not None:
+            try:
+                mireds_val = float(ct_mireds)
+                if mireds_val > 0:
+                    service_data["color_temp_kelvin"] = max(1, int(1000000 / mireds_val))
+            except Exception:
+                _LOGGER.debug("Invalid color_temp payload: %s", ct_mireds)
 
         if bri is not None:
             try:
@@ -378,10 +381,10 @@ class HuerizonCoordinator:
         elif input_format == "color_temp":
             mireds = self._get_entity_value(entities.get("mireds"))
             kelvin = self._get_entity_value(entities.get("kelvin"))
-            if mireds is not None:
-                service_data["color_temp"] = int(mireds)
-            elif kelvin is not None:
+            if kelvin is not None:
                 service_data["color_temp_kelvin"] = int(kelvin)
+            elif mireds is not None and mireds > 0:
+                service_data["color_temp_kelvin"] = max(1, int(1000000 / mireds))
 
         # Add brightness if configured
         brightness = self._get_entity_value(entities.get("brightness"))
@@ -393,9 +396,8 @@ class HuerizonCoordinator:
             _LOGGER.debug("No valid color data to send")
             return
 
-        # Add target lights and source
+        # Add target lights (do not add source)
         service_data["entity_id"] = self.target_lights
-        service_data["source"] = "huerizon_auto"
 
         _LOGGER.debug("Calling light.turn_on with data: %s", service_data)
 

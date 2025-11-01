@@ -1,6 +1,6 @@
 apply_sky:
   name: Apply Sky to Lights
-  description: Apply the current sky color data (XY, RGB, or HS) to selected lights.
+  description: Apply the current sky color data (XY, RGB, HS, or Color Temperature) to selected lights.
   target:
     entity:
       domain: light
@@ -23,15 +23,6 @@ apply_sky:
       example: [146, 163, 156]
       selector:
         object: {}
-    color_temp:
-      name: Color temperature (mireds)
-      description: Mireds value
-      example: 300
-      selector:
-        number:
-          min: 153
-          max: 500
-          step: 1
     color_temp_kelvin:
       name: Color temperature (kelvin)
       description: Kelvin value
@@ -41,6 +32,15 @@ apply_sky:
           min: 2000
           max: 6500
           step: 50
+    color_temp:
+      name: Color temperature (mireds, deprecated for output)
+      description: Mireds value
+      example: 300
+      selector:
+        number:
+          min: 153
+          max: 500
+          step: 1
     brightness:
       name: Brightness
       description: 0–255
