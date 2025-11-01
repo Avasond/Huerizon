@@ -177,24 +177,39 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
 
         schema = vol.Schema(
             {
-                vol.Optional(
-                    CONF_SOURCE_CAMERA,
-                    default=(opts.get(CONF_SOURCE_CAMERA) if opts.get(CONF_SOURCE_CAMERA) is not None else vol.UNDEFINED),
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=["camera"])
-                ),
-                vol.Required(
-                    CONF_TARGET_LIGHTS,
-                    default=opts.get(CONF_TARGET_LIGHTS, []),
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=["light"], multiple=True)
-                ),
+                # 1) Primary choice first
                 vol.Required(
                     CONF_INPUT_FORMAT,
                     default=opts.get(CONF_INPUT_FORMAT, FORMAT_XY),
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=INPUT_FORMAT_OPTIONS, mode="dropdown")
                 ),
+
+                # 2) Optional camera
+                vol.Optional(
+                    CONF_SOURCE_CAMERA,
+                    default=(opts.get(CONF_SOURCE_CAMERA) if opts.get(CONF_SOURCE_CAMERA) is not None else vol.UNDEFINED),
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain=["camera"])
+                ),
+
+                # 3) Target lights next
+                vol.Required(
+                    CONF_TARGET_LIGHTS,
+                    default=opts.get(CONF_TARGET_LIGHTS, []),
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain=["light"], multiple=True)
+                ),
+
+                # 4) Apply mode
+                vol.Optional(
+                    CONF_APPLY_MODE,
+                    default=opts.get(CONF_APPLY_MODE, APPLY_PREFER_XY),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=APPLY_MODE_OPTIONS, mode="dropdown")
+                ),
+
+                # 5) Scale settings
                 vol.Optional(
                     CONF_HUE_SCALE,
                     default=opts.get(CONF_HUE_SCALE, SCALE_AUTO),
@@ -207,12 +222,8 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=SCALE_OPTIONS_PERCENT, mode="dropdown")
                 ),
-                vol.Optional(
-                    CONF_APPLY_MODE,
-                    default=opts.get(CONF_APPLY_MODE, APPLY_PREFER_XY),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=APPLY_MODE_OPTIONS, mode="dropdown")
-                ),
+
+                # 6) Schedule block
                 vol.Optional(
                     CONF_ONLY_AT_NIGHT,
                     default=opts.get(CONF_ONLY_AT_NIGHT, DEFAULT_OPTIONS.get(CONF_ONLY_AT_NIGHT, False)),
@@ -231,6 +242,8 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=DOW_OPTIONS, multiple=True, mode="list"),
                 ),
+
+                # 7) Thresholds / pacing
                 vol.Optional(
                     CONF_MIN_DELTA,
                     default=opts.get(CONF_MIN_DELTA, DEFAULT_OPTIONS.get(CONF_MIN_DELTA, 0.0)),
@@ -243,6 +256,8 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=3600, step=1, mode="box")
                 ),
+
+                # 8) Advanced normalization flags
                 vol.Optional(
                     CONF_STRIP_SYMBOLS,
                     default=norm.get(CONF_STRIP_SYMBOLS, True),
