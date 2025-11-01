@@ -3,7 +3,7 @@ from typing import Any, Tuple
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 
-from homeassistant.const import Platform
+from homeassistant.const import Platform, ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant, ServiceCall, Event, callback
 from homeassistant.helpers import service as ha_service
 from homeassistant.config_entries import ConfigEntry
@@ -176,7 +176,10 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         ct_kelvin = call.data.get("color_temp_kelvin")
         transition = call.data.get("transition")
 
-        entity_ids: set[str] = ha_service.async_extract_entity_ids(call)
+        entity_ids = await ha_service.async_extract_entity_ids(call)
+        if not entity_ids and ATTR_ENTITY_ID in call.data:
+            ids = call.data[ATTR_ENTITY_ID]
+            entity_ids = {ids} if isinstance(ids, str) else set(ids)
         if not entity_ids:
             _LOGGER.warning("huerizon.apply_sky called without target lights")
             return
