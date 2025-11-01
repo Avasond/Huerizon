@@ -37,8 +37,23 @@
           "active_start": "Start time for active syncing period (HH:MM:SS).",
           "active_end": "End time for active syncing period (HH:MM:SS).",
           "active_days": "Days of the week when syncing should be active.",
-          "min_delta": "Ignore small color changes below this threshold.",
-          "rate_limit_sec": "Minimum seconds between updates to lights."
+          "min_delta": "Ignore small color changes below this threshold to reduce flicker.",
+          "rate_limit_sec": "Minimum number of seconds between consecutive light updates.",
+          "normalize": "Enable normalization of input color values to standard ranges.",
+          "strip_symbols": "Remove non-numeric characters from input values before processing.",
+          "coerce_numbers": "Convert input values to numbers, ignoring invalid entries.",
+          "clamp": "Restrict input values to valid ranges to prevent errors.",
+          "brightness_is_percent": "Interpret brightness values as percentages (0-100%) instead of absolute values.",
+          "apply_mode": "Define the color mode to apply when multiple are supported (XY, HS, or Color Temp).",
+          "min_delta": "Threshold for minimum color difference to trigger an update.",
+          "rate_limit_sec": "Time delay in seconds to limit update frequency to lights.",
+          "active_start": "Time of day when syncing begins, formatted as HH:MM:SS.",
+          "active_end": "Time of day when syncing ends, formatted as HH:MM:SS.",
+          "active_days": "Specify which days syncing is active, e.g., weekdays or weekends.",
+          "input_format": "Format of the incoming color data (XY, HS, RGB, or Color Temp).",
+          "source_camera": "Camera entity used as the source for sky color data.",
+          "target_lights": "List of light entities to receive color updates.",
+          "only_at_night": "Restrict syncing to nighttime hours when the sun is below the horizon."
         }
       },
       "format_xy": {
