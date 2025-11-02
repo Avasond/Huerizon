@@ -79,11 +79,10 @@ If you already have your own MQTT camera you can skip SkyCam, there is no restri
 
 ## Roadmap
 
-### **v1.0 - Core Sky Sync**
-✅ MQTT color and brightness publishing  
-✅ Camera and light selection through the UI setup  
-✅ Basic automation and Apply Sky blueprint  
-✅ Fully compatible with Home Assistant 2025.10+
-Live entity previews for color and brightness  
-Expanded service calls (manual sync and refresh options)  
+- ✅ MQTT color and brightness publishing  
+- ✅ Camera and light selection through the UI setup  
+- ✅ Basic automation and Apply Sky blueprint  
+- ✅ Fully compatible with Home Assistant 2025.10+
+- Live entity previews for color and brightness  
+- Expanded service calls (manual sync and refresh options)  
 
