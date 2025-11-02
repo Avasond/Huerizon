@@ -35,7 +35,6 @@ _DEFAULTS_FALLBACK: dict[str, Any] = {
         "brightness_is_percent": False,
     },
     "apply_mode": "prefer_xy",
-    "only_at_night": False,
     "active_start": None,
     "active_end": None,
     "active_days": [],
@@ -74,9 +73,6 @@ def _merge_and_normalize_options(options: Mapping[str, Any]) -> Tuple[dict[str, 
         except Exception:
             merged[k] = DEFAULT_OPTIONS[k]
 
-    merged["only_at_night"] = _coerce_bool(
-        merged.get("only_at_night"), DEFAULT_OPTIONS["only_at_night"]
-    )
 
     norm_src = dict(merged.get("normalize", {}))
     norm = {
@@ -111,7 +107,6 @@ def _merge_and_normalize_options(options: Mapping[str, Any]) -> Tuple[dict[str, 
         },
         "apply_mode": (merged.get("apply_mode") or "prefer_xy").lower(),
         "schedule": {
-            "only_at_night": bool(merged.get("only_at_night", False)),
             "active_start": _none_if_empty(merged.get("active_start", None)),
             "active_end": _none_if_empty(merged.get("active_end", None)),
             "active_days": list(merged.get("active_days", [])),
@@ -282,20 +277,6 @@ class HuerizonCoordinator:
             now = dt_util.utcnow()
             if (now - self._last_update_time).total_seconds() < rate_limit:
                 return False
-
-        # Check only_at_night
-        if schedule.get("only_at_night", False):
-            try:
-                next_sunrise = get_astral_event_date(self.hass, "sunrise", dt_util.now())
-                next_sunset = get_astral_event_date(self.hass, "sunset", dt_util.now())
-                now = dt_util.now()
-
-                if next_sunrise and next_sunset:
-                    # If sunrise is before sunset, it means we're currently in daytime
-                    if next_sunrise < next_sunset:
-                        return False
-            except Exception as e:
-                _LOGGER.debug("Could not determine day/night status: %s", e)
 
         # Check active time range
         active_start = schedule.get("active_start")

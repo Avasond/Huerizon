@@ -36,7 +36,6 @@ SCALE_0_1 = "0_1"
 SCALE_0_255 = "0_255"
 PERCENT_0_100 = "0_100"
 
-CONF_ONLY_AT_NIGHT = "only_at_night"
 CONF_ACTIVE_START = "active_start"
 CONF_ACTIVE_END = "active_end"
 CONF_ACTIVE_DAYS = "active_days"
@@ -78,7 +77,6 @@ DEFAULT_OPTIONS = {
     CONF_STATE_B_ENTITY: "",
     CONF_HUE_SCALE: SCALE_AUTO,
     CONF_PERCENT_SCALE: SCALE_AUTO,
-    CONF_ONLY_AT_NIGHT: False,
     CONF_ACTIVE_START: "",
     CONF_ACTIVE_END: "",
     CONF_ACTIVE_DAYS: [],
@@ -139,7 +137,6 @@ __all__ = [
     "SCALE_0_1",
     "SCALE_0_255",
     "PERCENT_0_100",
-    "CONF_ONLY_AT_NIGHT",
     "CONF_ACTIVE_START",
     "CONF_ACTIVE_END",
     "CONF_ACTIVE_DAYS",

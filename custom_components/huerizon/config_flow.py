@@ -24,7 +24,6 @@ from .const import (
     CONF_STATE_S_ENTITY,
     CONF_STATE_B_ENTITY,
     DEFAULT_OPTIONS,
-    CONF_ONLY_AT_NIGHT,
     CONF_ACTIVE_START,
     CONF_ACTIVE_END,
     CONF_ACTIVE_DAYS,
@@ -224,10 +223,6 @@ class HuerizonOptionsFlowHandler(config_entries.OptionsFlow):
                 ),
 
                 # 6) Schedule block
-                vol.Optional(
-                    CONF_ONLY_AT_NIGHT,
-                    default=opts.get(CONF_ONLY_AT_NIGHT, DEFAULT_OPTIONS.get(CONF_ONLY_AT_NIGHT, False)),
-                ): selector.BooleanSelector(),
                 vol.Optional(
                     CONF_ACTIVE_START,
                     default=(opts.get(CONF_ACTIVE_START) if opts.get(CONF_ACTIVE_START) is not None else vol.UNDEFINED),
